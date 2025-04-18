@@ -43,7 +43,7 @@ chip=$(gpiodetect | head -n1 | awk '{print $1}')
 gpioset "$chip" "$LED_LINE"=0
 EOF
 
-# 4. GPIO3 Shutdown Script (safe polling version)
+# 4. GPIO3 Shutdown Script (3-second hold version)
 cat <<'EOF' | sudo tee $BIN_DIR/gpio3-shutdown.sh >/dev/null
 #!/bin/bash
 
@@ -51,26 +51,33 @@ BUTTON_LINE=3
 LED_LINE=17
 CHIP=$(gpiodetect | head -n1 | awk '{print $1}')
 
-echo "Waiting for button press on GPIO $BUTTON_LINE..."
+echo "Waiting for button press and hold (3 seconds) on GPIO $BUTTON_LINE..."
 
 while true; do
-  state=$(gpioget "$CHIP" "$BUTTON_LINE" 2>/dev/null || echo "error")
+  hold_counter=0
 
-  if [ "$state" = "0" ]; then
-    echo "Button pressed, shutting down..."
+  # รอจนปุ่มถูกกด
+  while [ "$(gpioget "$CHIP" "$BUTTON_LINE" 2>/dev/null || echo "error")" = "0" ]; do
+    hold_counter=$((hold_counter + 1))
+    sleep 0.1
 
-    for i in {1..10}; do
-      gpioset "$CHIP" "$LED_LINE"=1
-      sleep 0.5
-      gpioset "$CHIP" "$LED_LINE"=0
-      sleep 0.5
-    done
+    if [ "$hold_counter" -ge 30 ]; then
+      echo "Button held for 3 seconds, shutting down..."
 
-    shutdown -h now
-    break
-  fi
+      for i in {1..10}; do
+        gpioset "$CHIP" "$LED_LINE"=1
+        sleep 0.5
+        gpioset "$CHIP" "$LED_LINE"=0
+        sleep 0.5
+      done
 
-  sleep 0.5
+      shutdown -h now
+      exit 0
+    fi
+  done
+
+  # ปล่อยก่อนครบ 3 วิ → รีเซ็ต
+  sleep 0.1
 done
 EOF
 
@@ -132,7 +139,7 @@ EOF
 # Service: GPIO3 Shutdown
 cat <<EOF | sudo tee $UNIT_DIR/gpio3-shutdown.service >/dev/null
 [Unit]
-Description=Shutdown when GPIO3 is pressed
+Description=Shutdown when GPIO3 is pressed and held
 After=multi-user.target
 
 [Service]
