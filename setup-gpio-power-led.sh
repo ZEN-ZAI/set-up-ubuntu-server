@@ -43,7 +43,7 @@ chip=$(gpiodetect | head -n1 | awk '{print $1}')
 gpioset "$chip" "$LED_LINE"=0
 EOF
 
-# 4. GPIO3 Shutdown Script (polling style)
+# 4. GPIO3 Shutdown Script (safe polling version)
 cat <<'EOF' | sudo tee $BIN_DIR/gpio3-shutdown.sh >/dev/null
 #!/bin/bash
 
@@ -51,15 +51,12 @@ BUTTON_LINE=3
 LED_LINE=17
 CHIP=$(gpiodetect | head -n1 | awk '{print $1}')
 
-# Set default high and background
-gpioset --mode=signal --background "$CHIP" "$BUTTON_LINE"=1
-gpioget "$CHIP" "$BUTTON_LINE" > /dev/null 2>&1
-
 echo "Waiting for button press on GPIO $BUTTON_LINE..."
 
 while true; do
-  state=$(gpioget "$CHIP" "$BUTTON_LINE")
-  if [ "$state" -eq 0 ]; then
+  state=$(gpioget "$CHIP" "$BUTTON_LINE" 2>/dev/null || echo "error")
+
+  if [ "$state" = "0" ]; then
     echo "Button pressed, shutting down..."
 
     for i in {1..10}; do
@@ -72,6 +69,7 @@ while true; do
     shutdown -h now
     break
   fi
+
   sleep 0.5
 done
 EOF
