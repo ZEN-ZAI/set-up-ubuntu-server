@@ -1,1 +1,1 @@
-# set-up-ubuntu-server
+# setup-ubuntu-server
